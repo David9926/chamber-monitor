@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Chamber Live Monitor | Mochi WS-02A - Team</title>
+<meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+<style>
+  :root {
+    --bg:       #0d1117;
+    --surface:  #161b22;
+    --border:   #30363d;
+    --text:     #e6edf3;
+    --muted:    #8b949e;
+    --ti-color: #ff4444;
+    --ai-color: #1f9cf0;
+    --sk-color: #f0a500;
+    --run-bg:   #1a3a1a;
+    --run-border:#2ea043;
+    --idle-bg:  #1c1c1c;
+    --idle-border:#444;
+    --pass:     #2ea043;
+    --fail:     #da3633;
+    --warn:     #d29922;
+    --card-w:   340px;
+    --log-w:    320px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 13px;
+  }
+
+  /* ── Header ── */
+  header {
+    background: #010409;
+    border-bottom: 2px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header-left { display: flex; align-items: center; gap: 16px; }
+  .logo { font-size: 20px; font-weight: 700; color: #58a6ff; letter-spacing: 1px; }
+  .subtitle { color: var(--muted); font-size: 11px; }
+  .header-right { display: flex; align-items: center; gap: 16px; }
+  #clock { color: #58a6ff; font-size: 13px; font-weight: 600; font-family: monospace; }
+  .refresh-info { color: var(--muted); font-size: 11px; }
+  .btn-manual-refresh {
+    background: #21262d; border: 1px solid var(--border);
+    color: var(--text); padding: 5px 14px; border-radius: 6px;
+    cursor: pointer; font-size: 12px;
+  }
+  .btn-manual-refresh:hover { background: #30363d; }
+  .you-badge {
+    background: #21262d; border: 1px solid #58a6ff;
+    color: #58a6ff; font-size: 11px; font-weight: 600;
+    padding: 4px 12px; border-radius: 20px; cursor: pointer;
+  }
+  .you-badge:hover { background: #30363d; }
+  .online-badge {
+    background: #0d2a0d; border: 1px solid #2ea043;
+    color: #3fb950; font-size: 11px; font-weight: 600;
+    padding: 4px 12px; border-radius: 20px; cursor: pointer;
+    position: relative;
+  }
+  .online-badge:hover .online-tooltip { display: block; }
+  .online-tooltip {
+    display: none;
+    position: absolute; top: 34px; right: 0;
+    background: #161b22; border: 1px solid #30363d;
+    border-radius: 8px; padding: 10px 12px;
+    min-width: 200px; z-index: 200;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  }
+  .online-tooltip-title {
+    font-size: 10px; font-weight: 700; color: #8b949e;
+    text-transform: uppercase; margin-bottom: 8px;
+  }
+  .online-person {
+    display: flex; justify-content: space-between;
+    font-size: 11px; padding: 3px 0;
+    border-bottom: 1px solid #21262d;
+  }
+  .online-person:last-child { border-bottom: none; }
+  .op-name { color: #e6edf3; font-weight: 600; }
+  .op-time { color: #555; font-size: 10px; }
+  .net-url {
+    font-size: 11px; color: #3fb950; font-family: monospace;
+    background: #0d2a0d; border: 1px solid #2ea043;
+    padding: 3px 10px; border-radius: 4px; cursor: pointer;
+    user-select: all;
+  }
+  .net-url:hover { background: #1a3a1a; }
+
+  /* ── Summary bar ── */
+  .summary-bar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex; gap: 0; flex-wrap: wrap;
+  }
+  .stat-box {
+    flex: 1; min-width: 140px;
+    padding: 10px 20px;
+    border-right: 1px solid var(--border);
+    text-align: center;
+  }
+  .stat-box:last-child { border-right: none; }
+  .stat-value { font-size: 26px; font-weight: 700; line-height: 1.1; }
+  .stat-label { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .c-run   { color: #2ea043; }
+  .c-idle  { color: #8b949e; }
+  .c-pass  { color: #3fb950; }
+  .c-fail  { color: #f85149; }
+  .c-total { color: #58a6ff; }
+
+  /* ── Main grid ── */
+  .chambers-grid {
+    display: flex; flex-wrap: wrap; gap: 16px;
+    padding: 20px 24px;
+  }
+
+  /* ── Chamber card ── */
+  .chamber-card {
+    width: var(--card-w);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .chamber-card.is-running {
+    border-color: var(--run-border);
+    box-shadow: 0 0 12px rgba(46,160,67,0.25);
+  }
+  .chamber-card.is-error {
+    border-color: #da3633;
+    box-shadow: 0 0 12px rgba(218,54,51,0.25);
+  }
+
+  /* Card header */
+  .card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px;
+  }
+  .ch-name { font-size: 17px; font-weight: 700; letter-spacing: 0.5px; }
+  .ch-type-badge {
+    font-size: 10px; font-weight: 600; padding: 3px 8px;
+    border-radius: 12px; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .badge-ti   { background: rgba(255,68,68,0.2);   color: #ff7070; border: 1px solid #ff4444; }
+  .badge-ai   { background: rgba(31,156,240,0.2);  color: #58a6ff; border: 1px solid #1f9cf0; }
+  .badge-soak { background: rgba(240,165,0,0.2);   color: #f0a500; border: 1px solid #f0a500; }
+
+  /* Status pill */
+  .status-row {
+    padding: 4px 14px 8px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .status-dot {
+    width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+  }
+  .dot-running  { background: #2ea043; box-shadow: 0 0 6px #2ea043; animation: pulse 1.5s infinite; }
+  .dot-idle     { background: #555; }
+  .dot-error    { background: #da3633; box-shadow: 0 0 6px #da3633; }
+  @keyframes pulse {
+    0%,100% { opacity: 1; } 50% { opacity: 0.4; }
+  }
+  .status-text { font-size: 11px; font-weight: 600; }
+  .s-running { color: #2ea043; }
+  .s-idle    { color: #8b949e; }
+  .s-error   { color: #f85149; }
+  .temp-badge {
+    margin-left: auto; font-size: 10px; color: var(--muted);
+    background: #21262d; padding: 2px 6px; border-radius: 4px;
+  }
+
+  /* Running script box */
+  .running-box {
+    margin: 0 12px 10px;
+    background: var(--run-bg);
+    border: 1px solid var(--run-border);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .running-label {
+    font-size: 10px; font-weight: 700; color: #2ea043;
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px;
+  }
+  .script-name {
+    font-size: 12px; font-weight: 600; color: #e6edf3;
+    word-break: break-all; line-height: 1.4;
+  }
+  .running-meta {
+    margin-top: 7px; display: flex; flex-wrap: wrap; gap: 6px;
+  }
+  .meta-chip {
+    font-size: 10px; background: #21262d; border-radius: 4px;
+    padding: 2px 7px; color: var(--muted);
+  }
+  .meta-chip span { color: var(--text); font-weight: 600; }
+
+  /* Idle box */
+  .idle-box {
+    margin: 0 12px 10px;
+    background: #0d1117;
+    border: 1px dashed #30363d;
+    border-radius: 8px;
+    padding: 18px 12px;
+    text-align: center;
+    color: #444;
+    font-size: 12px;
+  }
+
+  /* DUT stats */
+  .dut-row {
+    margin: 0 12px 10px;
+    display: flex; gap: 8px;
+  }
+  .dut-chip {
+    flex: 1; text-align: center; padding: 6px 4px;
+    border-radius: 6px; font-size: 11px;
+  }
+  .dut-chip .dv { font-size: 18px; font-weight: 700; }
+  .chip-total { background: #161b22; border: 1px solid #30363d; }
+  .chip-pass  { background: #1a3a1a; border: 1px solid #2ea043; color: #3fb950; }
+  .chip-fail  { background: #3a1a1a; border: 1px solid #da3633; color: #f85149; }
+  .dut-chip .dl { font-size: 10px; color: var(--muted); margin-top: 1px; }
+
+  /* Action buttons */
+  .card-actions {
+    padding: 8px 12px 12px;
+    display: flex; gap: 8px;
+  }
+  .btn {
+    flex: 1; padding: 7px 4px; border-radius: 6px;
+    border: 1px solid transparent; font-size: 11px; font-weight: 600;
+    cursor: pointer; text-align: center; transition: opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn-start    { background: #196c2e; border-color: #2ea043; color: #fff; }
+  .btn-complete { background: #0e4429; border-color: #238636; color: #3fb950; }
+  .btn-fail     { background: #3a1a1a; border-color: #da3633; color: #f85149; }
+  .btn-clear    { background: #21262d; border-color: #30363d; color: #8b949e; }
+
+  /* Completed history */
+  .history-section {
+    border-top: 1px solid var(--border);
+    padding: 8px 12px 10px;
+    flex: 1;
+  }
+  .history-label {
+    font-size: 10px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 7px;
+  }
+  .history-empty { color: #444; font-size: 11px; font-style: italic; }
+  .history-list { display: flex; flex-direction: column; gap: 5px; max-height: 180px; overflow-y: auto; }
+  .history-item {
+    background: #0d1117; border-radius: 6px; padding: 7px 10px;
+    border-left: 3px solid #30363d;
+    font-size: 11px;
+  }
+  .history-item.r-Pass        { border-left-color: #2ea043; }
+  .history-item.r-Fail        { border-left-color: #da3633; }
+  .history-item.r-Error       { border-left-color: #d29922; }
+  .history-item.r-Interrupted { border-left-color: #8b949e; }
+  .hi-script { font-weight: 600; color: #e6edf3; word-break: break-all; }
+  .hi-meta   { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .hi-result { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; }
+  .rp { background: #1a3a1a; color: #3fb950; }
+  .rf { background: #3a1a1a; color: #f85149; }
+  .re { background: #3a2e00; color: #d29922; }
+  .ri { background: #21262d; color: #8b949e; }
+  .hi-time { font-size: 10px; color: #555; }
+
+  /* ── Modal ── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7); z-index: 500;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; width: 460px; max-width: 96vw;
+    padding: 24px; position: relative;
+  }
+  .modal h3 { font-size: 16px; margin-bottom: 16px; color: #58a6ff; }
+  .modal label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; margin-top: 12px; }
+  .modal select, .modal input, .modal textarea {
+    width: 100%; background: #0d1117; border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 7px 10px;
+    font-size: 13px; outline: none;
+  }
+  .modal select:focus, .modal input:focus, .modal textarea:focus {
+    border-color: #58a6ff;
+  }
+  .modal textarea { resize: vertical; min-height: 60px; }
+  .modal-actions { display: flex; gap: 10px; margin-top: 18px; }
+  .btn-confirm { flex: 1; background: #196c2e; border: 1px solid #2ea043; color: #fff; padding: 9px; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 13px; }
+  .btn-confirm:hover { background: #1e8035; }
+  .btn-cancel  { background: #21262d; border: 1px solid #30363d; color: var(--muted); padding: 9px 18px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .btn-cancel:hover  { background: #30363d; }
+  .modal-close { position: absolute; top: 12px; right: 14px; background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; }
+
+  /* ── Layout with sidebar ── */
+  .main-layout {
+    display: flex; align-items: flex-start;
+  }
+  .chambers-wrapper {
+    flex: 1; min-width: 0;
+  }
+
+  /* ── Activity Sidebar ── */
+  .activity-sidebar {
+    width: var(--log-w); flex-shrink: 0;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    height: calc(100vh - 110px);
+    position: sticky; top: 110px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .sidebar-header {
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px; font-weight: 700;
+    color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.5px; flex-shrink: 0;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .sidebar-header span { color: #58a6ff; }
+  .activity-list {
+    flex: 1; overflow-y: auto; padding: 8px 10px;
+    display: flex; flex-direction: column; gap: 5px;
+  }
+  .act-item {
+    background: #0d1117; border-radius: 6px;
+    padding: 7px 10px; border-left: 3px solid #30363d;
+    font-size: 11px;
+  }
+  .act-item.act-started     { border-left-color: #2ea043; }
+  .act-item.act-completed   { border-left-color: #58a6ff; }
+  .act-item.act-fail        { border-left-color: #da3633; }
+  .act-item.act-interrupted { border-left-color: #d29922; }
+  .act-item.act-cleared     { border-left-color: #555; }
+  .act-action {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.3px; margin-bottom: 3px;
+  }
+  .act-started   .act-action { color: #2ea043; }
+  .act-completed .act-action { color: #58a6ff; }
+  .act-fail      .act-action { color: #f85149; }
+  .act-interrupted .act-action { color: #d29922; }
+  .act-cleared   .act-action { color: #555; }
+  .act-script { color: #e6edf3; font-weight: 600; word-break: break-all; line-height: 1.3; }
+  .act-meta   { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+  .act-chip   { font-size: 10px; color: var(--muted); background: #21262d; padding: 1px 5px; border-radius: 3px; }
+  .act-chip b { color: #e6edf3; }
+  .act-empty  { color: #444; font-size: 11px; font-style: italic; padding: 10px; }
+
+  /* ── Name prompt modal ── */
+  #modal-name .modal { max-width: 380px; text-align: center; }
+  #modal-name .modal h3 { color: #58a6ff; margin-bottom: 8px; }
+  #modal-name .modal p  { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: #196c2e; color: #fff; padding: 10px 20px;
+    border-radius: 8px; font-size: 13px; font-weight: 600;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.3s; z-index: 999;
+    border: 1px solid #2ea043;
+  }
+  #toast.show { opacity: 1; }
+  #toast.err  { background: #3a1a1a; border-color: #da3633; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <div class="header-left">
+    <div>
+      <div class="logo">&#128300; CHAMBER LIVE MONITOR &nbsp;<small style="font-size:12px;color:#8b949e;font-weight:400">Team Edition</small></div>
+      <div class="subtitle">Mochi WS-02A &nbsp;|&nbsp; Script_mochi_ws_02a &nbsp;|&nbsp;
+        <span style="color:#8b949e">Permanent:</span>
+        <span class="net-url" title="Click to copy — works every day!" onclick="copyUrl(this)">http://{{ network_ip }}:5000</span>
+        &nbsp;<span style="color:#555;font-size:10px">or</span>&nbsp;
+        <span class="net-url" style="font-size:10px;opacity:0.7" title="Today's IP (may change)" onclick="copyUrl(this)">http://{{ network_ip_fallback }}:5000</span>
+      </div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div>
+      <div id="clock">--:--:--</div>
+      <div class="refresh-info" id="last-refresh">Last refresh: --</div>
+    </div>
+    <div class="online-badge" id="online-badge">
+      &#128994; <span id="online-count">1</span> Online
+      <div class="online-tooltip" id="online-tooltip">
+        <div class="online-tooltip-title">&#128100; Who's viewing now</div>
+        <div id="online-list">Loading...</div>
+      </div>
+    </div>
+    <button class="you-badge" onclick="promptName()" id="your-name-btn">&#128100; You: ?</button>
+    <button class="btn-manual-refresh" onclick="fetchState()">&#8635; Refresh</button>
+  </div>
+</header>
+
+<!-- ── Summary bar ── -->
+<div class="summary-bar">
+  <div class="stat-box">
+    <div class="stat-value c-total" id="s-total">10</div>
+    <div class="stat-label">Total Chambers</div>
+  </div>
+  <div class="stat-box">
+    <div class="stat-value c-run" id="s-running">0</div>
+    <div class="stat-label">&#9679; Running</div>
+  </div>
+  <div class="stat-box">
+    <div class="stat-value c-idle" id="s-idle">10</div>
+    <div class="stat-label">Idle</div>
+  </div>
+  <div class="stat-box">
+    <div class="stat-value c-pass" id="s-pass">0</div>
+    <div class="stat-label">Total Pass</div>
+  </div>
+  <div class="stat-box">
+    <div class="stat-value c-fail" id="s-fail">0</div>
+    <div class="stat-label">Total Fail</div>
+  </div>
+  <div class="stat-box">
+    <div class="stat-value" id="s-completed" style="color:#d2a679">0</div>
+    <div class="stat-label">Scripts Completed</div>
+  </div>
+</div>
+
+<!-- ── Main layout ── -->
+<div class="main-layout">
+  <div class="chambers-wrapper">
+    <div class="chambers-grid" id="chambers-grid">
+      <!-- Cards injected by JS -->
+    </div>
+  </div>
+
+  <!-- ── Activity Sidebar ── -->
+  <div class="activity-sidebar">
+    <div class="sidebar-header">
+      &#128203; Activity Log
+      <span id="act-count">0</span>
+    </div>
+    <div class="activity-list" id="activity-list">
+      <div class="act-empty">No activity yet</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Name Prompt Modal ── -->
+<div class="modal-overlay" id="modal-name">
+  <div class="modal">
+    <h3>&#128100; What is your name?</h3>
+    <p>Your name will appear on every update you make so your team can see who did what.</p>
+    <input type="text" id="name-input" placeholder="Enter your name..." style="text-align:center;font-size:15px"/>
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn-confirm" onclick="saveName()">Save & Continue</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Start Modal ── -->
+<div class="modal-overlay" id="modal-start">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-start')">&times;</button>
+    <h3>&#9654; Start Script</h3>
+    <input type="hidden" id="start-chamber"/>
+    <label>Chamber</label>
+    <input type="text" id="start-chamber-display" disabled/>
+
+    <label>Script Name</label>
+    <select id="start-script">
+      {% for s in all_scripts %}
+      <option value="{{ s }}">{{ s }}</option>
+      {% endfor %}
+    </select>
+
+    <label>Your Name / Operator</label>
+    <input type="text" id="start-operator" placeholder="e.g. John"/>
+    <label>DUT Count</label>
+    <input type="number" id="start-dut" value="0" min="0"/>
+    <label>Notes (optional)</label>
+    <textarea id="start-notes" placeholder="Any remarks..."></textarea>
+    <div class="modal-actions">
+      <button class="btn-confirm" onclick="submitStart()">&#9654; Start</button>
+      <button class="btn-cancel"  onclick="closeModal('modal-start')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Complete Modal ── -->
+<div class="modal-overlay" id="modal-complete">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-complete')">&times;</button>
+    <h3 id="modal-complete-title">&#10003; Complete Script</h3>
+    <input type="hidden" id="complete-chamber"/>
+    <input type="hidden" id="complete-result"/>
+    <label>Chamber</label>
+    <input type="text" id="complete-chamber-display" disabled/>
+    <label>Pass Count</label>
+    <input type="number" id="complete-pass" value="0" min="0"/>
+    <label>Fail Count</label>
+    <input type="number" id="complete-fail" value="0" min="0"/>
+    <label>Notes (optional)</label>
+    <textarea id="complete-notes" placeholder="Any remarks..."></textarea>
+    <div class="modal-actions">
+      <button class="btn-confirm" id="btn-complete-confirm" onclick="submitComplete()">&#10003; Confirm</button>
+      <button class="btn-cancel"  onclick="closeModal('modal-complete')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ── -->
+<div id="toast"></div>
+
+<script>
+const ALL_CHAMBERS = ["TI01","TI02","AI01","AI02","AI03","AI04","AI05","AI06","SOAK-1","SOAK-2"];
+let stateCache = {};
+let myName = localStorage.getItem("chamber_operator_name") || "";
+
+// ── Name management ────────────────────────────────────────────────────────
+function initName() {
+  if (!myName) {
+    document.getElementById("modal-name").classList.add("open");
+    setTimeout(() => document.getElementById("name-input").focus(), 100);
+  } else {
+    updateNameBtn();
+  }
+}
+function saveName() {
+  const val = document.getElementById("name-input").value.trim();
+  if (!val) { alert("Please enter your name."); return; }
+  myName = val;
+  localStorage.setItem("chamber_operator_name", myName);
+  document.getElementById("modal-name").classList.remove("open");
+  updateNameBtn();
+  showToast("Welcome, " + myName + "!");
+}
+function promptName() {
+  document.getElementById("name-input").value = myName;
+  document.getElementById("modal-name").classList.add("open");
+  setTimeout(() => document.getElementById("name-input").focus(), 100);
+}
+function updateNameBtn() {
+  const btn = document.getElementById("your-name-btn");
+  if (btn) btn.textContent = "\u{1F464} You: " + (myName || "?");
+}
+function copyUrl(el) {
+  navigator.clipboard.writeText(el.textContent.trim());
+  showToast("URL copied! Share with your team.");
+}
+
+// ── Clock ──────────────────────────────────────────────────────────────────
+function tickClock() {
+  const now = new Date();
+  document.getElementById("clock").textContent =
+    now.toLocaleTimeString("en-GB", {hour12: false});
+}
+setInterval(tickClock, 1000);
+tickClock();
+
+// ── Auto refresh every 10 s ────────────────────────────────────────────────
+setInterval(() => { fetchState(); fetchActivity(); fetchVisitors(); }, 10000);
+
+// ── Fetch state from server ────────────────────────────────────────────────
+async function fetchState() {
+  try {
+    const res = await fetch("/api/state");
+    const data = await res.json();
+    stateCache = data.chambers;
+    renderAll(data.chambers);
+    document.getElementById("last-refresh").textContent =
+      "Last refresh: " + data.server_time;
+  } catch(e) {
+    showToast("Connection error – retrying...", true);
+  }
+}
+
+// ── Fetch visitors ────────────────────────────────────────────────────────
+async function fetchVisitors() {
+  try {
+    const res  = await fetch("/api/visitors");
+    const data = await res.json();
+    document.getElementById("online-count").textContent = data.count;
+    const list = document.getElementById("online-list");
+    if (!data.visitors.length) {
+      list.innerHTML = '<div style="color:#555;font-size:11px">No one online</div>';
+    } else {
+      list.innerHTML = data.visitors.map(v => `
+        <div class="online-person">
+          <span class="op-name">${v.name || v.ip}</span>
+          <span class="op-time">${v.last_seen}</span>
+        </div>`).join("");
+    }
+  } catch(e) {}
+}
+
+// ── Fetch activity log ─────────────────────────────────────────────────────
+async function fetchActivity() {
+  try {
+    const res  = await fetch("/api/activity?limit=60");
+    const data = await res.json();
+    renderActivity(data);
+  } catch(e) {}
+}
+
+function renderActivity(entries) {
+  const list = document.getElementById("activity-list");
+  document.getElementById("act-count").textContent = entries.length;
+  if (!entries.length) {
+    list.innerHTML = '<div class="act-empty">No activity yet</div>';
+    return;
+  }
+  list.innerHTML = entries.map(e => {
+    const cls = e.action === "Started"       ? "act-started"  :
+                e.result === "Fail"           ? "act-fail"     :
+                e.action === "Completed"      ? "act-completed":
+                e.action === "Interrupted"    ? "act-interrupted":
+                e.action === "ClearedHistory" ? "act-cleared"  : "act-started";
+    const scriptShort = e.script ? e.script.replace("Script_mochi-ss_","").replace("Script_mochi_","") : "—";
+    return `
+    <div class="act-item ${cls}">
+      <div class="act-action">${e.action} &mdash; ${e.chamber}</div>
+      <div class="act-script" title="${e.script}">${scriptShort}</div>
+      <div class="act-meta">
+        ${e.operator ? `<span class="act-chip"><b>${e.operator}</b></span>` : ""}
+        ${e.result && e.result !== "Running" ? `<span class="act-chip">${e.result}</span>` : ""}
+        <span class="act-chip">${e.time}</span>
+        ${e.client_ip ? `<span class="act-chip">${e.client_ip}</span>` : ""}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+// ── Render all chambers ────────────────────────────────────────────────────
+function renderAll(chambers) {
+  const grid = document.getElementById("chambers-grid");
+  grid.innerHTML = "";
+  let running = 0, idle = 0, totalPass = 0, totalFail = 0, totalCompleted = 0;
+
+  ALL_CHAMBERS.forEach(ch => {
+    const c = chambers[ch];
+    if (!c) return;
+    if (c.running) running++; else idle++;
+    totalPass      += (c.pass  || 0);
+    totalFail      += (c.fail  || 0);
+    totalCompleted += (c.completed ? c.completed.length : 0);
+    grid.appendChild(buildCard(ch, c));
+  });
+
+  document.getElementById("s-running").textContent   = running;
+  document.getElementById("s-idle").textContent      = idle;
+  document.getElementById("s-pass").textContent      = totalPass;
+  document.getElementById("s-fail").textContent      = totalFail;
+  document.getElementById("s-completed").textContent = totalCompleted;
+}
+
+// ── Build a chamber card ───────────────────────────────────────────────────
+function buildCard(ch, c) {
+  const div = document.createElement("div");
+  div.className = "chamber-card" + (c.running ? " is-running" : "");
+  div.id = "card-" + ch;
+
+  const typeClass = ch.startsWith("TI") ? "badge-ti" :
+                    ch.startsWith("AI") ? "badge-ai" : "badge-soak";
+  const typeLabel = ch.startsWith("TI") ? "Temp" :
+                    ch.startsWith("AI") ? "Ambient" : "Soak";
+  const dotClass  = c.running ? "dot-running" : "dot-idle";
+  const stClass   = c.running ? "s-running"   : "s-idle";
+  const stLabel   = c.running ? "RUNNING"      : "IDLE";
+
+  // ── Card header
+  let html = `
+    <div class="card-header">
+      <span class="ch-name">${ch}</span>
+      <span class="ch-type-badge ${typeClass}">${typeLabel}</span>
+    </div>
+    <div class="status-row">
+      <span class="status-dot ${dotClass}"></span>
+      <span class="status-text ${stClass}">${stLabel}</span>
+      <span class="temp-badge">${c.temp_range || ""}</span>
+    </div>`;
+
+  // ── Running / idle box
+  if (c.running) {
+    const r = c.running;
+    html += `
+    <div class="running-box">
+      <div class="running-label">&#9654; Now Running</div>
+      <div class="script-name">${r.script}</div>
+      <div class="running-meta">
+        <span class="meta-chip">Operator: <span>${r.operator || "—"}</span></span>
+        <span class="meta-chip">DUT: <span>${r.dut_count || 0}</span></span>
+        <span class="meta-chip">Start: <span>${r.start_time || "—"}</span></span>
+        ${r.notes ? `<span class="meta-chip">Note: <span>${r.notes}</span></span>` : ""}
+      </div>
+    </div>`;
+  } else {
+    html += `<div class="idle-box">No script running</div>`;
+  }
+
+  // ── DUT stats
+  html += `
+    <div class="dut-row">
+      <div class="dut-chip chip-total">
+        <div class="dv">${c.dut_count || 0}</div>
+        <div class="dl">DUT</div>
+      </div>
+      <div class="dut-chip chip-pass">
+        <div class="dv">${c.pass || 0}</div>
+        <div class="dl">PASS</div>
+      </div>
+      <div class="dut-chip chip-fail">
+        <div class="dv">${c.fail || 0}</div>
+        <div class="dl">FAIL</div>
+      </div>
+    </div>`;
+
+  // ── Action buttons
+  html += `<div class="card-actions">`;
+  if (!c.running) {
+    html += `<button class="btn btn-start" onclick="openStart('${ch}')">&#9654; Start Script</button>`;
+  } else {
+    html += `<button class="btn btn-complete" onclick="openComplete('${ch}','Pass')">&#10003; Pass</button>`;
+    html += `<button class="btn btn-fail"     onclick="openComplete('${ch}','Fail')">&#10007; Fail</button>`;
+  }
+  html += `<button class="btn btn-clear" onclick="clearHistory('${ch}')" title="Clear history">&#128465;</button>`;
+  html += `</div>`;
+
+  // ── Completed history
+  html += `<div class="history-section">
+    <div class="history-label">Completed Scripts (${(c.completed||[]).length})</div>`;
+
+  if (!c.completed || c.completed.length === 0) {
+    html += `<div class="history-empty">No completed scripts yet</div>`;
+  } else {
+    html += `<div class="history-list">`;
+    c.completed.forEach(entry => {
+      const rClass = (entry.result === "Pass") ? "rp" :
+                     (entry.result === "Fail") ? "rf" :
+                     (entry.result === "Error") ? "re" : "ri";
+      html += `
+      <div class="history-item r-${entry.result}">
+        <div class="hi-script">${entry.script}</div>
+        <div class="hi-meta">
+          <span class="hi-result ${rClass}">${entry.result}</span>
+          ${entry.pass !== undefined ? `<span class="hi-time">P:${entry.pass} F:${entry.fail}</span>` : ""}
+          <span class="hi-time">${entry.start_time || ""}${entry.end_time ? " → "+entry.end_time : ""}</span>
+          ${entry.operator ? `<span class="hi-time">${entry.operator}</span>` : ""}
+        </div>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+  html += `</div>`;
+
+  div.innerHTML = html;
+  return div;
+}
+
+// ── Modal helpers ──────────────────────────────────────────────────────────
+function openStart(ch) {
+  document.getElementById("start-chamber").value         = ch;
+  document.getElementById("start-chamber-display").value = ch;
+  document.getElementById("start-operator").value = myName || stateCache[ch]?.operator || "";
+  document.getElementById("start-dut").value = stateCache[ch]?.dut_count || 0;
+  document.getElementById("start-notes").value = "";
+  document.getElementById("modal-start").classList.add("open");
+}
+
+function openComplete(ch, result) {
+  document.getElementById("complete-chamber").value         = ch;
+  document.getElementById("complete-chamber-display").value = ch;
+  document.getElementById("complete-result").value          = result;
+  document.getElementById("complete-pass").value = 0;
+  document.getElementById("complete-fail").value = 0;
+  document.getElementById("complete-notes").value = "";
+  const title = document.getElementById("modal-complete-title");
+  const btn   = document.getElementById("btn-complete-confirm");
+  if (result === "Fail") {
+    title.textContent = "✗ Mark as FAIL";
+    btn.style.background = "#6a1a1a";
+    btn.style.borderColor = "#da3633";
+    btn.style.color = "#f85149";
+  } else {
+    title.textContent = "✓ Mark as PASS";
+    btn.style.background = "#196c2e";
+    btn.style.borderColor = "#2ea043";
+    btn.style.color = "#fff";
+  }
+  document.getElementById("modal-complete").classList.add("open");
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove("open");
+}
+
+// ── Submit start ───────────────────────────────────────────────────────────
+async function submitStart() {
+  const op = document.getElementById("start-operator").value.trim() || myName;
+  const payload = {
+    chamber:   document.getElementById("start-chamber").value,
+    script:    document.getElementById("start-script").value,
+    operator:  op,
+    dut_count: document.getElementById("start-dut").value,
+    notes:     document.getElementById("start-notes").value,
+  };
+  if (op && !myName) { myName = op; localStorage.setItem("chamber_operator_name", op); updateNameBtn(); }
+  closeModal("modal-start");
+  const res = await postJSON("/api/start", payload);
+  if (res.ok) { showToast("Script started in " + payload.chamber); fetchState(); fetchActivity(); }
+  else        { showToast(res.error || "Error", true); }
+}
+
+// ── Submit complete ────────────────────────────────────────────────────────
+async function submitComplete() {
+  const payload = {
+    chamber:  document.getElementById("complete-chamber").value,
+    result:   document.getElementById("complete-result").value,
+    pass:     document.getElementById("complete-pass").value,
+    fail:     document.getElementById("complete-fail").value,
+    notes:    document.getElementById("complete-notes").value,
+    operator: myName,
+  };
+  closeModal("modal-complete");
+  const res = await postJSON("/api/complete", payload);
+  if (res.ok) { showToast(payload.chamber + " marked " + payload.result); fetchState(); fetchActivity(); }
+  else        { showToast(res.error || "Error", true); }
+}
+
+// ── Clear history ──────────────────────────────────────────────────────────
+async function clearHistory(ch) {
+  if (!confirm("Clear completed history for " + ch + "?")) return;
+  const res = await postJSON("/api/clear_history", {chamber: ch, operator: myName});
+  if (res.ok) { showToast("History cleared for " + ch); fetchState(); fetchActivity(); }
+  else        { showToast(res.error || "Error", true); }
+}
+
+// ── Utility ────────────────────────────────────────────────────────────────
+async function postJSON(url, data) {
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(data)
+    });
+    return await res.json();
+  } catch(e) { return {ok: false, error: e.message}; }
+}
+
+function showToast(msg, err=false) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "show" + (err ? " err" : "");
+  setTimeout(() => { t.className = ""; }, 3500);
+}
+
+// Close modal on overlay click
+document.querySelectorAll(".modal-overlay").forEach(el => {
+  el.addEventListener("click", e => {
+    if (e.target === el) el.classList.remove("open");
+  });
+});
+
+// ── Name input enter key ──────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("name-input")?.addEventListener("keydown", e => {
+    if (e.key === "Enter") saveName();
+  });
+});
+
+// ── Initial load ───────────────────────────────────────────────────────────
+initName();
+fetchState();
+fetchActivity();
+fetchVisitors();
+</script>
+</body>
+</html>
